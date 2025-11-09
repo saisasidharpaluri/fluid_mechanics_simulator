@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Fluid & Particle Simulator - SPH WebGL</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            background: #0a0a0a;
+            color: #ffffff;
+        }
+
+        #container {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
+
+        #canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        #ui-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 20px;
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            min-width: 300px;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        #ui-panel h1 {
+            font-size: 20px;
+            margin-bottom: 15px;
+            color: #4fc3f7;
+            border-bottom: 2px solid #4fc3f7;
+            padding-bottom: 10px;
+        }
+
+        .control-group {
+            margin-bottom: 20px;
+        }
+
+        .control-group h3 {
+            font-size: 14px;
+            margin-bottom: 10px;
+            color: #81c784;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .control {
+            margin-bottom: 12px;
+        }
+
+        .control label {
+            display: block;
+            font-size: 12px;
+            margin-bottom: 5px;
+            color: #b0b0b0;
+        }
+
+        .control input[type="range"] {
+            width: 100%;
+            height: 4px;
+            background: #333;
+            border-radius: 2px;
+            outline: none;
+            margin-bottom: 5px;
+        }
+
+        .control input[type="range"]::-webkit-slider-thumb {
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #4fc3f7;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        .control input[type="range"]::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            background: #4fc3f7;
+            border-radius: 50%;
+            cursor: pointer;
+            border: none;
+        }
+
+        .control .param-input {
+            width: 80px;
+            padding: 6px 8px;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 4px;
+            color: #4fc3f7;
+            font-size: 12px;
+            text-align: center;
+            margin-left: 10px;
+            display: inline-block;
+            vertical-align: middle;
+        }
+
+        .control .param-input:focus {
+            outline: none;
+            border-color: #4fc3f7;
+            box-shadow: 0 0 5px rgba(79, 195, 247, 0.3);
+        }
+
+        .control .value-display {
+            float: right;
+            color: #4fc3f7;
+            font-weight: bold;
+            font-size: 12px;
+        }
+
+        button {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            border-radius: 5px;
+            color: white;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button.danger {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+
+        button.success {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        }
+
+        select {
+            outline: none;
+        }
+
+        select:hover {
+            background: rgba(255,255,255,0.15);
+        }
+
+        select option {
+            background: #2a2a3e;
+            color: #fff;
+            padding: 8px;
+        }
+
+        button.menu-toggle {
+            background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+            position: relative;
+        }
+
+        .submenu {
+            margin-top: 10px;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 5px;
+            border-left: 3px solid #fa709a;
+        }
+
+        .submenu-btn {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 8px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-size: 12px;
+        }
+
+        .submenu-btn:last-child {
+            margin-bottom: 0;
+        }
+
+        .submenu-btn.danger {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+
+        #stats {
+            margin-top: 15px;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 5px;
+            font-size: 11px;
+            line-height: 1.8;
+        }
+
+        #stats div {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+        }
+
+        #stats .stat-label {
+            color: #81c784;
+        }
+
+        #stats .stat-value {
+            color: #4fc3f7;
+            font-weight: bold;
+        }
+
+        .toggle-panel {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            padding: 10px 15px;
+            background: rgba(0, 0, 0, 0.8);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .instructions {
+            margin-top: 15px;
+            padding: 15px;
+            background: rgba(76, 175, 80, 0.1);
+            border-radius: 5px;
+            border-left: 3px solid #4caf50;
+            font-size: 11px;
+            line-height: 1.6;
+        }
+
+        .instructions strong {
+            color: #81c784;
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        /* Side Panel Styles */
+        .side-panel {
+            position: fixed;
+            top: 0;
+            right: -350px;
+            width: 350px;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.95);
+            border-left: 2px solid #4fc3f7;
+            padding: 20px;
+            transition: right 0.3s ease-in-out;
+            z-index: 1000;
+            overflow-y: auto;
+        }
+
+        .side-panel.active {
+            right: 0;
+        }
+
+        .side-panel h2 {
+            color: #4fc3f7;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #4fc3f7;
+        }
+
+        .side-panel-close {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: #f5576c;
+            border: none;
+            color: white;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 18px;
+            line-height: 30px;
+            text-align: center;
+        }
+
+        .side-panel button {
+            margin-bottom: 8px;
+        }
+
+        .preset-info {
+            font-size: 10px;
+            color: #888;
+            margin-top: -5px;
+            margin-bottom: 10px;
+            padding-left: 10px;
+        }
+
+        /* Modal Dialog Styles */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 10000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            padding: 30px;
+            border-radius: 10px;
+            border: 2px solid #4fc3f7;
+            max-width: 500px;
+            width: 90%;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+        }
+
+        .modal-content h2 {
+            color: #4fc3f7;
+            margin-bottom: 20px;
+            margin-top: 0;
+        }
+
+        .modal-input {
+            width: calc(100% - 20px);
+            padding: 10px;
+            margin-bottom: 15px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid #4fc3f7;
+            border-radius: 5px;
+            color: white;
+            font-size: 14px;
+        }
+
+        .modal-input:focus {
+            outline: none;
+            border-color: #81c784;
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        .modal-params {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            font-size: 12px;
+        }
+
+        .modal-params .param-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+
+        .modal-params .param-label {
+            color: #81c784;
+        }
+
+        .modal-params .param-value {
+            color: #4fc3f7;
+            font-weight: bold;
+        }
+
+        .modal-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+
+        .modal-buttons button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+
+        .modal-btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .modal-btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .modal-btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .modal-btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .modal-close-x {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: none;
+            border: none;
+            color: #888;
+            font-size: 32px;
+            cursor: pointer;
+            width: 40px;
+            height: 40px;
+            padding: 0;
+            line-height: 1;
+            transition: color 0.3s;
+        }
+
+        .modal-close-x:hover {
+            color: #ff6b6b;
+        }
+
+        .custom-preset-item {
+            position: relative;
+            padding-right: 40px;
+        }
+
+        .delete-preset-btn {
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: #f5576c;
+            border: none;
+            color: white;
+            width: 25px;
+            height: 25px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 14px;
+            padding: 0;
+        }
+
+        .delete-preset-btn:hover {
+            background: #d32f2f;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <canvas id="canvas"></canvas>
+        
+        <!-- Save Preset Modal -->
+        <div id="save-preset-modal" class="modal-overlay">
+            <div class="modal-content">
+                <h2>💾 Save Custom Preset</h2>
+                <input type="text" id="preset-name-input" class="modal-input" placeholder="Enter preset name (e.g., Thick Goo)">
+                
+                <div class="modal-params">
+                    <h3 style="color: #4fc3f7; margin-top: 0; margin-bottom: 10px;">Current Parameters:</h3>
+                    <div class="param-row">
+                        <span class="param-label">Particles:</span>
+                        <span class="param-value" id="modal-particles">2000</span>
+                    </div>
+                    <div class="param-row">
+                        <span class="param-label">Density:</span>
+                        <span class="param-value" id="modal-density">1000</span>
+                    </div>
+                    <div class="param-row">
+                        <span class="param-label">Stiffness:</span>
+                        <span class="param-value" id="modal-stiffness">2000</span>
+                    </div>
+                    <div class="param-row">
+                        <span class="param-label">Viscosity:</span>
+                        <span class="param-value" id="modal-viscosity">0.3</span>
+                    </div>
+                    <div class="param-row">
+                        <span class="param-label">Time Step:</span>
+                        <span class="param-value" id="modal-timestep">0.003</span>
+                    </div>
+                </div>
+                
+                <div class="modal-buttons">
+                    <button class="modal-btn-secondary" onclick="closeSavePresetModal()">Cancel</button>
+                    <button class="modal-btn-primary" onclick="confirmSavePreset()">Save Preset</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Preset Already Exists Modal -->
+        <div id="preset-exists-modal" class="modal-overlay">
+            <div class="modal-content" style="max-width: 450px;">
+                <button class="modal-close-x" onclick="closePresetExistsModal()">×</button>
+                <h2 style="color: #ff6b6b;">⚠️ Preset Already Exists</h2>
+                <p style="font-size: 14px; color: #ccc; margin: 20px 0;">
+                    A <strong id="existing-preset-type" style="color: #4fc3f7;">custom</strong> preset named 
+                    <strong id="existing-preset-name" style="color: #4fc3f7;"></strong> already exists!
+                </p>
+                <p style="font-size: 13px; color: #999; margin: 10px 0 20px 0;">
+                    What would you like to do?
+                </p>
+                <div class="modal-buttons" style="flex-direction: column; gap: 10px;">
+                    <button id="btn-create-new-preset" class="modal-btn-primary" onclick="createNewPresetWithSameName()" style="width: 100%;">
+                        ➕ Create New with Unique Name
+                    </button>
+                    <button id="btn-overwrite-preset" class="modal-btn-danger" onclick="overwritePreset()" style="width: 100%; background: #ff6b6b;">
+                        ♻️ Overwrite Existing (Custom Only)
+                    </button>
+                    <button class="modal-btn-secondary" onclick="closePresetExistsModal()" style="width: 100%;">
+                        ❌ Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <div id="ui-panel">
+            <h1>⚡ Fluid Mechanics Simulator</h1>
+            
+            <div class="control-group">
+                <h3>🎮 Actions</h3>
+                <button id="btn-reset" class="success">Reset Simulation</button>
+                <button id="btn-pause">⏸ Pause</button>
+                <button id="btn-objects">🎲 Objects</button>
+                <button id="btn-fluids">💧 Fluid Presets</button>
+            </div>
+
+            <div class="control-group">
+                <h3>🌊 Fluid Parameters</h3>
+                
+                <div class="control">
+                    <label>
+                        Particle Count: 
+                        <input type="number" id="input-particles" min="500" max="5000" step="100" value="2000" class="param-input">
+                        <span class="value-display" id="val-particles">2000</span>
+                    </label>
+                    <input type="range" id="slider-particles" min="500" max="5000" step="100" value="2000">
+                </div>
+
+                <div class="control">
+                    <label>
+                        Rest Density: 
+                        <input type="number" id="input-density" min="500" max="2000" step="50" value="1000" class="param-input">
+                        <span class="value-display" id="val-density">1000</span>
+                    </label>
+                    <input type="range" id="slider-density" min="500" max="2000" step="50" value="1000">
+                </div>
+
+                <div class="control">
+                    <label>
+                        Stiffness: 
+                        <input type="number" id="input-stiffness" min="500" max="5000" step="100" value="2000" class="param-input">
+                        <span class="value-display" id="val-stiffness">2000</span>
+                    </label>
+                    <input type="range" id="slider-stiffness" min="500" max="5000" step="100" value="2000">
+                </div>
+
+                <div class="control">
+                    <label>
+                        Viscosity: 
+                        <input type="number" id="input-viscosity" min="0" max="1" step="0.05" value="0.3" class="param-input">
+                        <span class="value-display" id="val-viscosity">0.3</span>
+                    </label>
+                    <input type="range" id="slider-viscosity" min="0" max="1" step="0.05" value="0.3">
+                </div>
+
+                <div class="control">
+                    <label>
+                        Time Step: 
+                        <input type="number" id="input-timestep" min="0.001" max="0.01" step="0.001" value="0.003" class="param-input">
+                        <span class="value-display" id="val-timestep">0.003</span>
+                    </label>
+                    <input type="range" id="slider-timestep" min="0.001" max="0.01" step="0.001" value="0.003">
+                </div>
+            </div>
+
+            <div class="control-group">
+                <h3>🎨 Rendering</h3>
+                
+                <div class="control">
+                    <label>
+                        Particle Size: 
+                        <input type="number" id="input-size" min="0.1" max="0.5" step="0.01" value="0.2" class="param-input">
+                        <span class="value-display" id="val-size">0.2</span>
+                    </label>
+                    <input type="range" id="slider-size" min="0.1" max="0.5" step="0.01" value="0.2">
+                </div>
+                
+                <div class="control">
+                    <label style="display: flex; align-items: center; gap: 10px;">
+                        Fluid Color: 
+                        <input type="color" id="input-fluid-color" value="#ffffff" style="width: 60px; height: 30px; border: none; border-radius: 4px; cursor: pointer;">
+                    </label>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <h3>🎲 Object Parameters</h3>
+                
+                <div class="control">
+                    <label>
+                        Apply To:
+                    </label>
+                    <select id="select-target-object" style="width: 100%; padding: 8px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; color: #fff; font-size: 12px; cursor: pointer;">
+                        <option value="all">🌐 All Objects (Default)</option>
+                    </select>
+                </div>
+                
+                <div class="control">
+                    <label>
+                        Object Gravity: 
+                        <input type="number" id="input-object-gravity" min="-20" max="0" step="0.1" value="-9.8" class="param-input">
+                        <span class="value-display" id="val-object-gravity">-9.8</span>
+                    </label>
+                    <input type="range" id="slider-object-gravity" min="-20" max="0" step="0.1" value="-9.8">
+                </div>
+                
+                <div class="control">
+                    <label>
+                        Object Scale: 
+                        <input type="number" id="input-object-scale" min="0.5" max="3.0" step="0.1" value="1.0" class="param-input">
+                        <span class="value-display" id="val-object-scale">1.0</span>
+                    </label>
+                    <input type="range" id="slider-object-scale" min="0.5" max="3.0" step="0.1" value="1.0">
+                </div>
+                
+                <div class="control">
+                    <label>
+                        Rotation X-Axis (Pitch): 
+                        <input type="number" id="input-object-rotation-x" min="-720" max="720" step="1" value="0" class="param-input">
+                        <span class="value-display" id="val-object-rotation-x">0</span>°
+                    </label>
+                    <input type="range" id="slider-object-rotation-x" min="-720" max="720" step="1" value="0">
+                </div>
+                
+                <div class="control">
+                    <label>
+                        Rotation Y-Axis (Yaw): 
+                        <input type="number" id="input-object-rotation-y" min="-720" max="720" step="1" value="0" class="param-input">
+                        <span class="value-display" id="val-object-rotation-y">0</span>°
+                    </label>
+                    <input type="range" id="slider-object-rotation-y" min="-720" max="720" step="1" value="0">
+                </div>
+                
+                <div class="control">
+                    <label>
+                        Rotation Z-Axis (Roll): 
+                        <input type="number" id="input-object-rotation-z" min="-720" max="720" step="1" value="0" class="param-input">
+                        <span class="value-display" id="val-object-rotation-z">0</span>°
+                    </label>
+                    <input type="range" id="slider-object-rotation-z" min="-720" max="720" step="1" value="0">
+                </div>
+                
+                <div class="control">
+                    <label>
+                        Object Density: 
+                        <input type="number" id="input-object-density" min="100" max="20000" step="100" value="2700" class="param-input">
+                        <span class="value-display" id="val-object-density">2700</span> kg/m³
+                    </label>
+                    <input type="range" id="slider-object-density" min="100" max="20000" step="100" value="2700">
+                </div>
+                
+                <div class="control">
+                    <label>
+                        Material Preset:
+                    </label>
+                    <select id="select-density-preset" style="width: 100%; padding: 8px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; color: #fff; font-size: 12px; cursor: pointer;">
+                        <option value="2700">⚙️ Aluminum (2700 kg/m³) - Default</option>
+                        <option value="400">🪶 Balsa Wood (400 kg/m³) - Very Light</option>
+                        <option value="600">🌳 Wood (600 kg/m³) - Floats</option>
+                        <option value="920">🧊 Ice (920 kg/m³) - Near Water</option>
+                        <option value="1000">💧 Water (1000 kg/m³) - Reference</option>
+                        <option value="1200">🧱 Concrete (1200 kg/m³) - Light Stone</option>
+                        <option value="2500">🪨 Granite (2500 kg/m³) - Stone</option>
+                        <option value="7850">🔩 Iron (7850 kg/m³) - Heavy</option>
+                        <option value="8960">🟠 Copper (8960 kg/m³) - Metal</option>
+                        <option value="11340">⚫ Lead (11340 kg/m³) - Very Heavy</option>
+                        <option value="13600">⚗️ Mercury (13600 kg/m³) - Liquid Metal</option>
+                        <option value="19300">🟡 Gold (19300 kg/m³) - Dense Metal</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <h3>⚡ Simulation Speed</h3>
+                <div class="control">
+                    <label>
+                        Speed Multiplier: 
+                        <input type="number" id="input-sim-speed" min="0.1" max="5" step="0.1" value="1.0" class="param-input">
+                        <span class="value-display" id="val-sim-speed">1.0</span>×
+                    </label>
+                    <input type="range" id="slider-sim-speed" min="0.1" max="5" step="0.1" value="1.0">
+                </div>
+            </div>
+
+            <div class="control-group">
+                <h3>💾 Save Settings</h3>
+                <button id="btn-save-sample">Save as Custom Preset</button>
+            </div>
+
+            <div id="stats">
+                <div><span class="stat-label">FPS:</span> <span class="stat-value" id="fps">60</span></div>
+                <div><span class="stat-label">Particles:</span> <span class="stat-value" id="particle-count">2000</span></div>
+                <div><span class="stat-label">Rigid Bodies:</span> <span class="stat-value" id="body-count">0</span></div>
+                <div><span class="stat-label">Compute Time:</span> <span class="stat-value" id="compute-time">0.0ms</span></div>
+                <div><span class="stat-label">Render Time:</span> <span class="stat-value" id="render-time">0.0ms</span></div>
+            </div>
+
+            <div class="instructions">
+                <strong>Controls:</strong>
+                • Click & Drag to rotate camera<br>
+                • Scroll to zoom<br>
+                • Drop rigid bodies to interact with fluid<br>
+                • Adjust parameters in real-time<br>
+            </div>
+        </div>
+
+        <div class="toggle-panel" id="toggle-ui">Toggle UI [H]</div>
+
+        <!-- Objects Side Panel -->
+        <div id="objects-panel" class="side-panel">
+            <button class="side-panel-close" onclick="closeSidePanel('objects')">×</button>
+            <h2>🎲 Drop Objects</h2>
+            <button id="btn-drop-sphere">Sphere</button>
+            <button id="btn-drop-cube">Cube</button>
+            <button id="btn-drop-cylinder">Cylinder</button>
+            <button id="btn-drop-torus">Torus (Donut)</button>
+            <button id="btn-drop-cone">Cone</button>
+            <button id="btn-drop-boat">Boat Shape</button>
+            <button id="btn-drop-hollow-sphere">Hollow Sphere</button>
+            <button id="btn-drop-hollow-cube">Hollow Cube</button>
+            <button id="btn-drop-hollow-cylinder">Hollow Cylinder</button>
+            <button id="btn-clear-objects" class="danger">Clear All Objects</button>
+        </div>
+
+        <!-- Fluids Side Panel -->
+        <div id="fluids-panel" class="side-panel">
+            <button class="side-panel-close" onclick="closeSidePanel('fluids')">×</button>
+            <h2>💧 Fluid Presets</h2>
+            
+            <h3 style="color: #81c784; font-size: 14px; margin-bottom: 10px;">Standard Presets</h3>
+            
+            <button id="btn-fluid-water" style="background: linear-gradient(135deg, #4fc3f7 0%, #29b6f6 100%);">💧 Water</button>
+            <div class="preset-info">Standard water properties</div>
+            
+            <button id="btn-fluid-honey" style="background: linear-gradient(135deg, #ffb74d 0%, #ffa726 100%);">🍯 Honey</button>
+            <div class="preset-info">High viscosity, slow flowing</div>
+            
+            <button id="btn-fluid-oil" style="background: linear-gradient(135deg, #8d6e63 0%, #6d4c41 100%);">🛢️ Oil</button>
+            <div class="preset-info">Medium viscosity</div>
+            
+            <button id="btn-fluid-mercury" style="background: linear-gradient(135deg, #90a4ae 0%, #607d8b 100%);">⚗️ Mercury</button>
+            <div class="preset-info">Very dense liquid metal</div>
+            
+            <button id="btn-fluid-air" style="background: linear-gradient(135deg, #e0f7fa 0%, #b2ebf2 100%); color: #333;">💨 Air</button>
+            <div class="preset-info">Low density gas</div>
+            
+            <button id="btn-fluid-gel" style="background: linear-gradient(135deg, #81c784 0%, #66bb6a 100%);">🧴 Gel</button>
+            <div class="preset-info">Very high viscosity</div>
+            
+            <button id="btn-fluid-custom" style="background: linear-gradient(135deg, #e0e0e0 0%, #bdbdbd 100%); color: #333;">⚙️ Custom</button>
+            <div class="preset-info">Use manual parameters</div>
+            
+            <button id="btn-save-preset" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); margin-top: 15px; font-weight: bold;">💾 Save Current Preset</button>
+            <div class="preset-info">Save current fluid parameters as a custom preset</div>
+
+            <div id="custom-presets-section" style="margin-top: 20px;">
+                <h3 style="color: #f39c12; font-size: 14px; margin-bottom: 10px;">My Custom Presets</h3>
+                <div id="custom-presets-container">
+                    <div style="color: #888; font-size: 11px; font-style: italic;">No custom presets saved yet</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="shaders.js"></script>
+    <script src="ParticleSystem.js"></script>
+    <script src="RigidBody.js"></script>
+    <script src="main.js"></script>
+</body>
+</html>

@@ -1,0 +1,397 @@
+// ParticleSystem.js
+// Manages particle simulation with CPU physics and GPU rendering
+
+class ParticleSystem {
+    constructor(numParticles, params) {
+        this.numParticles = numParticles;
+        this.params = params;
+        this.useGPU = false; // Will be set based on browser support
+        
+        console.log(`Particle System: ${numParticles} particles (CPU-based)`);
+        
+        // Initialize particle data arrays
+        this.initParticleArrays();
+        
+        // Create particle rendering geometry
+        this.createParticleGeometry();
+    }
+    
+    initParticleArrays() {
+        // Create arrays for particle data
+        this.positions = new Float32Array(this.numParticles * 3);
+        this.velocities = new Float32Array(this.numParticles * 3);
+        this.densities = new Float32Array(this.numParticles);
+        this.pressures = new Float32Array(this.numParticles);
+        this.accelerations = new Float32Array(this.numParticles * 3);
+        
+        // Initialize particles in a cube formation
+        const spacing = 0.3;
+        const cubeSize = Math.ceil(Math.pow(this.numParticles, 1/3));
+        const offset = (cubeSize * spacing) / 2;
+        
+        for (let i = 0; i < this.numParticles; i++) {
+            const x = (i % cubeSize) * spacing - offset;
+            const y = Math.floor(i / (cubeSize * cubeSize)) * spacing + 5.0;
+            const z = Math.floor((i % (cubeSize * cubeSize)) / cubeSize) * spacing - offset;
+            
+            this.positions[i * 3 + 0] = x + (Math.random() - 0.5) * 0.1;
+            this.positions[i * 3 + 1] = y + (Math.random() - 0.5) * 0.1;
+            this.positions[i * 3 + 2] = z + (Math.random() - 0.5) * 0.1;
+            
+            this.velocities[i * 3 + 0] = (Math.random() - 0.5) * 0.5;
+            this.velocities[i * 3 + 1] = 0.0;
+            this.velocities[i * 3 + 2] = (Math.random() - 0.5) * 0.5;
+        }
+        
+        console.log('✓ Particle arrays initialized');
+    }
+    
+    initTextures() {
+        // Create Float32Array for position and velocity data
+        const size = this.textureSize * this.textureSize * 4; // RGBA
+        
+        this.positionData = new Float32Array(size);
+        this.velocityData = new Float32Array(size);
+        
+        console.log(`Initializing ${this.numParticles} particles in ${this.textureSize}x${this.textureSize} texture`);
+        
+        // Initialize particles in a cube formation
+        let index = 0;
+        const spacing = 0.3;
+        const cubeSize = Math.ceil(Math.pow(this.numParticles, 1/3));
+        const offset = (cubeSize * spacing) / 2;
+        
+        for (let i = 0; i < this.textureSize; i++) {
+            for (let j = 0; j < this.textureSize; j++) {
+                const idx = (i * this.textureSize + j) * 4;
+                
+                if (index < this.numParticles) {
+                    // Position in a cube
+                    const x = (index % cubeSize) * spacing - offset;
+                    const y = Math.floor(index / (cubeSize * cubeSize)) * spacing + 5.0;
+                    const z = Math.floor((index % (cubeSize * cubeSize)) / cubeSize) * spacing - offset;
+                    
+                    this.positionData[idx + 0] = x + (Math.random() - 0.5) * 0.1;
+                    this.positionData[idx + 1] = y + (Math.random() - 0.5) * 0.1;
+                    this.positionData[idx + 2] = z + (Math.random() - 0.5) * 0.1;
+                    this.positionData[idx + 3] = 1.0;
+                    
+                    // Initial velocity (small random)
+                    this.velocityData[idx + 0] = (Math.random() - 0.5) * 0.5;
+                    this.velocityData[idx + 1] = 0.0;
+                    this.velocityData[idx + 2] = (Math.random() - 0.5) * 0.5;
+                    this.velocityData[idx + 3] = 1.0;
+                    
+                    index++;
+                } else {
+                    // Inactive particles (far away)
+                    this.positionData[idx + 0] = 1000.0;
+                    this.positionData[idx + 1] = 1000.0;
+                    this.positionData[idx + 2] = 1000.0;
+                    this.positionData[idx + 3] = 0.0;
+                }
+            }
+        }
+        
+        // Create textures with proper settings
+        this.positionTexture = new THREE.DataTexture(
+            this.positionData,
+            this.textureSize,
+            this.textureSize,
+            THREE.RGBAFormat,
+            THREE.FloatType
+        );
+        this.positionTexture.minFilter = THREE.NearestFilter;
+        this.positionTexture.magFilter = THREE.NearestFilter;
+        this.positionTexture.generateMipmaps = false;
+        this.positionTexture.needsUpdate = true;
+        
+        this.velocityTexture = new THREE.DataTexture(
+            this.velocityData,
+            this.textureSize,
+            this.textureSize,
+            THREE.RGBAFormat,
+            THREE.FloatType
+        );
+        this.velocityTexture.minFilter = THREE.NearestFilter;
+        this.velocityTexture.magFilter = THREE.NearestFilter;
+        this.velocityTexture.generateMipmaps = false;
+        this.velocityTexture.needsUpdate = true;
+        
+        console.log('✓ Textures created successfully');
+    }
+    
+    createRenderTargets() {
+        const options = {
+            minFilter: THREE.NearestFilter,
+            magFilter: THREE.NearestFilter,
+            format: THREE.RGBAFormat,
+            type: THREE.FloatType,
+            stencilBuffer: false,
+            depthBuffer: false
+        };
+        
+        // Ping-pong buffers for position
+        this.positionRT1 = new THREE.WebGLRenderTarget(this.textureSize, this.textureSize, options);
+        this.positionRT2 = new THREE.WebGLRenderTarget(this.textureSize, this.textureSize, options);
+        
+        // Ping-pong buffers for velocity
+        this.velocityRT1 = new THREE.WebGLRenderTarget(this.textureSize, this.textureSize, options);
+        this.velocityRT2 = new THREE.WebGLRenderTarget(this.textureSize, this.textureSize, options);
+        
+        // Density buffer
+        this.densityRT = new THREE.WebGLRenderTarget(this.textureSize, this.textureSize, options);
+        
+        // Acceleration buffer
+        this.accelerationRT = new THREE.WebGLRenderTarget(this.textureSize, this.textureSize, options);
+        
+        // Current read/write targets
+        this.positionRead = this.positionRT1;
+        this.positionWrite = this.positionRT2;
+        this.velocityRead = this.velocityRT1;
+        this.velocityWrite = this.velocityRT2;
+        
+        console.log('✓ Render targets created');
+    }
+    
+    createComputeMaterials() {
+        // Quad geometry for full-screen passes
+        this.computeGeometry = new THREE.PlaneGeometry(2, 2);
+        
+        // Density computation material
+        this.densityMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                positions: { value: this.positionTexture },
+                velocities: { value: this.velocityTexture },
+                particleMass: { value: this.params.particleMass },
+                smoothingRadius: { value: this.params.smoothingRadius },
+                resolution: { value: new THREE.Vector2(this.textureSize, this.textureSize) }
+            },
+            vertexShader: Shaders.computeVert,
+            fragmentShader: Shaders.densityFrag
+        });
+        
+        // Forces computation material
+        this.forcesMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                positions: { value: this.positionTexture },
+                velocities: { value: this.velocityTexture },
+                densities: { value: this.densityRT.texture },
+                particleMass: { value: this.params.particleMass },
+                smoothingRadius: { value: this.params.smoothingRadius },
+                restDensity: { value: this.params.restDensity },
+                stiffness: { value: this.params.stiffness },
+                viscosity: { value: this.params.viscosity },
+                resolution: { value: new THREE.Vector2(this.textureSize, this.textureSize) },
+                gravity: { value: new THREE.Vector3(0, this.params.gravity, 0) },
+                boundMin: { value: this.params.boundMin },
+                boundMax: { value: this.params.boundMax },
+                damping: { value: this.params.damping }
+            },
+            vertexShader: Shaders.computeVert,
+            fragmentShader: Shaders.forcesFrag
+        });
+        
+        // Integration material
+        this.integrationMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                positions: { value: this.positionTexture },
+                velocities: { value: this.velocityTexture },
+                accelerations: { value: this.accelerationRT.texture },
+                dt: { value: this.params.timeStep },
+                boundMin: { value: this.params.boundMin },
+                boundMax: { value: this.params.boundMax },
+                damping: { value: this.params.damping },
+                numRigidBodies: { value: 0 },
+                rigidBodyPositions: { value: [] },
+                rigidBodySizes: { value: [] },
+                rigidBodyTypes: { value: [] }
+            },
+            vertexShader: Shaders.computeVert,
+            fragmentShader: Shaders.integrationFrag
+        });
+        
+        // Velocity update material
+        this.velocityMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                velocities: { value: this.velocityTexture },
+                accelerations: { value: this.accelerationRT.texture },
+                dt: { value: this.params.timeStep }
+            },
+            vertexShader: Shaders.computeVert,
+            fragmentShader: Shaders.velocityUpdateFrag
+        });
+        
+        this.computeQuad = new THREE.Mesh(this.computeGeometry, this.densityMaterial);
+        this.computeScene = new THREE.Scene();
+        this.computeScene.add(this.computeQuad);
+        this.computeCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        
+        console.log('✓ Compute materials created');
+    }
+    
+    // Initialize GPU textures with initial data
+    initializeGPUTextures(renderer) {
+        // Create a simple shader to copy initial data to render targets
+        const copyMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                sourceTexture: { value: null }
+            },
+            vertexShader: Shaders.computeVert,
+            fragmentShader: `
+                uniform sampler2D sourceTexture;
+                varying vec2 vUv;
+                void main() {
+                    gl_FragColor = texture2D(sourceTexture, vUv);
+                }
+            `
+        });
+        
+        const copyQuad = new THREE.Mesh(this.computeGeometry, copyMaterial);
+        const copyScene = new THREE.Scene();
+        copyScene.add(copyQuad);
+        
+        // Copy position data to RT1
+        copyMaterial.uniforms.sourceTexture.value = this.positionTexture;
+        renderer.setRenderTarget(this.positionRT1);
+        renderer.render(copyScene, this.computeCamera);
+        
+        // Copy velocity data to RT1
+        copyMaterial.uniforms.sourceTexture.value = this.velocityTexture;
+        renderer.setRenderTarget(this.velocityRT1);
+        renderer.render(copyScene, this.computeCamera);
+        
+        renderer.setRenderTarget(null);
+        
+        console.log('✓ GPU textures initialized with particle data');
+    }
+    
+    createParticleGeometry() {
+        // Create geometry with one vertex per particle
+        const positions = new Float32Array(this.actualParticles * 3);
+        const indices = new Float32Array(this.actualParticles);
+        
+        for (let i = 0; i < this.actualParticles; i++) {
+            positions[i * 3] = 0;
+            positions[i * 3 + 1] = 0;
+            positions[i * 3 + 2] = 0;
+            indices[i] = i;
+        }
+        
+        this.particleGeometry = new THREE.BufferGeometry();
+        this.particleGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        this.particleGeometry.setAttribute('particleIndex', new THREE.BufferAttribute(indices, 1));
+        
+        this.particleMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                positions: { value: this.positionRead.texture },
+                velocities: { value: this.velocityRead.texture },
+                particleSize: { value: this.params.particleSize },
+                resolution: { value: new THREE.Vector2(this.textureSize, this.textureSize) }
+            },
+            vertexShader: Shaders.particleVert,
+            fragmentShader: Shaders.particleFrag,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending
+        });
+        
+        this.particles = new THREE.Points(this.particleGeometry, this.particleMaterial);
+    }
+    
+    update(renderer, rigidBodies) {
+        const startTime = performance.now();
+        
+        // Update uniforms
+        this.densityMaterial.uniforms.positions.value = this.positionRead.texture;
+        this.densityMaterial.uniforms.velocities.value = this.velocityRead.texture;
+        
+        this.forcesMaterial.uniforms.positions.value = this.positionRead.texture;
+        this.forcesMaterial.uniforms.velocities.value = this.velocityRead.texture;
+        this.forcesMaterial.uniforms.restDensity.value = this.params.restDensity;
+        this.forcesMaterial.uniforms.stiffness.value = this.params.stiffness;
+        this.forcesMaterial.uniforms.viscosity.value = this.params.viscosity;
+        this.forcesMaterial.uniforms.gravity.value.set(0, this.params.gravity, 0);
+        
+        this.integrationMaterial.uniforms.positions.value = this.positionRead.texture;
+        this.integrationMaterial.uniforms.velocities.value = this.velocityRead.texture;
+        this.integrationMaterial.uniforms.dt.value = this.params.timeStep;
+        
+        this.velocityMaterial.uniforms.velocities.value = this.velocityRead.texture;
+        this.velocityMaterial.uniforms.dt.value = this.params.timeStep;
+        
+        // Update rigid body uniforms
+        if (rigidBodies && rigidBodies.length > 0) {
+            const positions = [];
+            const sizes = [];
+            const types = [];
+            
+            for (let i = 0; i < Math.min(rigidBodies.length, 10); i++) {
+                positions.push(rigidBodies[i].position);
+                sizes.push(rigidBodies[i].size);
+                types.push(rigidBodies[i].type === 'sphere' ? 0 : 1);
+            }
+            
+            this.integrationMaterial.uniforms.numRigidBodies.value = positions.length;
+            this.integrationMaterial.uniforms.rigidBodyPositions.value = positions;
+            this.integrationMaterial.uniforms.rigidBodySizes.value = sizes;
+            this.integrationMaterial.uniforms.rigidBodyTypes.value = types;
+        }
+        
+        // Step 1: Compute density
+        this.computeQuad.material = this.densityMaterial;
+        renderer.setRenderTarget(this.densityRT);
+        renderer.render(this.computeScene, this.computeCamera);
+        
+        // Step 2: Compute forces (pressure and viscosity)
+        this.computeQuad.material = this.forcesMaterial;
+        renderer.setRenderTarget(this.accelerationRT);
+        renderer.render(this.computeScene, this.computeCamera);
+        
+        // Step 3: Update velocities
+        this.computeQuad.material = this.velocityMaterial;
+        renderer.setRenderTarget(this.velocityWrite);
+        renderer.render(this.computeScene, this.computeCamera);
+        
+        // Step 4: Update positions
+        this.computeQuad.material = this.integrationMaterial;
+        renderer.setRenderTarget(this.positionWrite);
+        renderer.render(this.computeScene, this.computeCamera);
+        
+        // Swap buffers
+        this.swapBuffers();
+        
+        // Update particle material
+        this.particleMaterial.uniforms.positions.value = this.positionRead.texture;
+        this.particleMaterial.uniforms.velocities.value = this.velocityRead.texture;
+        this.particleMaterial.uniforms.particleSize.value = this.params.particleSize;
+        
+        renderer.setRenderTarget(null);
+        
+        return performance.now() - startTime;
+    }
+    
+    swapBuffers() {
+        let temp = this.positionRead;
+        this.positionRead = this.positionWrite;
+        this.positionWrite = temp;
+        
+        temp = this.velocityRead;
+        this.velocityRead = this.velocityWrite;
+        this.velocityWrite = temp;
+    }
+    
+    reset() {
+        // Reinitialize textures
+        this.initTextures();
+        
+        // Copy to render targets
+        // This will be done automatically on next update
+    }
+    
+    updateParticleCount(newCount) {
+        // This requires recreating the entire system
+        // For simplicity, we'll reload
+        console.log('Particle count change requires reset');
+    }
+}
