@@ -1,0 +1,41 @@
+# Logs
+logs/
+*.log
+*.log.*
+
+# Dependency directories
+node_modules/
+
+# Build output
+build/
+dist/
+out/
+coverage/
+.tmp/
+.temp/
+.cache/
+
+# Environment files
+.env
+.env.*
+
+# Editor directories and files
+.vscode/
+.idea/
+*.iml
+*.swp
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Misc
+*.local
+
+# Python cache (in case of scripts)
+__pycache__/
+*.pyc
